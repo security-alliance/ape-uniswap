@@ -44,7 +44,6 @@ class UniswapManager(ManagerAccessMixin):
         builder = self.router_codec.encode.chain()
         print(f"Builder initiated")
         builder = builder.v3_swap_exact_in(
-            self,
             function_recipient=FunctionRecipient.SENDER,
             amount_in=amount_in,
             amount_out_min=amount_out_min,

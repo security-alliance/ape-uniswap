@@ -1,32 +1,18 @@
-from ape.contracts import ContractInstance
-from ape.types import ContractType
-from ape.utils import ManagerAccessMixin, cached_property
-from eth_utils import to_checksum_address
-from ape import chain, project, networks, accounts, Contract
-from tokenlists import TokenListManager
+from ape.utils import ManagerAccessMixin
+from ape import Contract
 from .router_codec import RouterCodec
 from eth_typing import AnyAddress
 from ._enums import (
-    _RouterConstant,
-    _RouterFunction,
     FunctionRecipient,
 )
 from ._constants import (
-    _execution_function_input_types,
-    _execution_function_selector,
     _router_abi,
 )
-from ape.api import AccountAPI, Address, ReceiptAPI, TransactionAPI
+from ape.api import AccountAPI, ReceiptAPI
 
 from typing import (
-    Any,
-    cast,
-    Dict,
-    List,
     Optional,
     Sequence,
-    Tuple,
-    Union,
 )
 UNI_V2_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
 UNI_V3_ROUTER = "0xE592427A0AEce92De3Edee1F18E0157C05861564"

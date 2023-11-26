@@ -10,7 +10,7 @@ from typing import (
     Dict,
 )
 
-from eth_typing import HexStr
+from web3.types import HexStr
 
 
 _execution_function_input_types = ["bytes", "bytes[]", "int"]
@@ -43,3 +43,4 @@ _structured_data_permit: Dict[str, Any] = {
         'verifyingContract': '0x000000000022D473030F116dDEE9F6B43aC78BA3',
     },
 }
+

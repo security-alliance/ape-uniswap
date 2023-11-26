@@ -17,34 +17,34 @@ from eth_account.messages import (
     encode_structured_data,
     SignableMessage,
 )
+from web3 import Web3
+from web3.types import (
+    ChecksumAddress,
+    Wei,
+)
 
-from ape.utils import ManagerAccessMixin
 from ._abi_builder import _ABIBuilder
 from ._constants import _structured_data_permit
 from ._decoder import _Decoder
 from ._encoder import _Encoder
 
-from eth_typing import AnyAddress, ChecksumAddress, HexStr
-
-from typing import (
-    Any,
-    Dict,
-    List,
-    Tuple,
-    Union,
-)
 
 __author__ = "Elnaril"
 __license__ = "MIT"
 __status__ = "Development"
 
 
-class RouterCodec(ManagerAccessMixin):
-    # TODO remove router address
-    def __init__(self, router_address: Union[AnyAddress, str, bytes] ) -> None:
+class RouterCodec:
+    def __init__(self, w3: Optional[Web3] = None, rpc_endpoint: Optional[str] = None) -> None:
         self._abi_map = _ABIBuilder().build_abi_map()
-        self.decode = _Decoder(self._abi_map, router_address)
-        self.decode = _Decoder(self._abi_map, router_address)
+        if w3:
+            self._w3 = w3
+        elif rpc_endpoint:
+            self._w3 = Web3(Web3.HTTPProvider(rpc_endpoint))
+        else:
+            self._w3 = Web3()
+        self.decode = _Decoder(self._w3, self._abi_map)
+        self.encode = _Encoder(self._w3, self._abi_map)
 
     @staticmethod
     def get_default_deadline(valid_duration: int = 180) -> int:
@@ -70,7 +70,7 @@ class RouterCodec(ManagerAccessMixin):
     @staticmethod
     def create_permit2_signable_message(
             token_address: ChecksumAddress,
-            amount: int,
+            amount: Wei,
             expiration: int,
             nonce: int,
             spender: ChecksumAddress,
@@ -113,3 +113,4 @@ class RouterCodec(ManagerAccessMixin):
         structured_data["domain"]["chainId"] = chain_id
         structured_data["message"] = permit_single
         return permit_single, encode_structured_data(primitive=structured_data)
+

@@ -9,7 +9,8 @@ Enums used by the Uniswap Universal Router Codec
 
 from enum import Enum
 
-from eth_utils import to_checksum_address
+from web3 import Web3
+from web3.types import Wei
 
 
 class _RouterFunction(Enum):
@@ -40,6 +41,7 @@ class FunctionRecipient(Enum):
 
 class _RouterConstant(Enum):
     # https://github.com/Uniswap/universal-router/blob/main/contracts/libraries/Constants.sol
-    MSG_SENDER = to_checksum_address("0x0000000000000000000000000000000000000001")
-    ADDRESS_THIS = to_checksum_address("0x0000000000000000000000000000000000000002")
-    ROUTER_BALANCE = 2**255
+    MSG_SENDER = Web3.to_checksum_address("0x0000000000000000000000000000000000000001")
+    ADDRESS_THIS = Web3.to_checksum_address("0x0000000000000000000000000000000000000002")
+    ROUTER_BALANCE = Wei(2**255)
+

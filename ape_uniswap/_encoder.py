@@ -18,11 +18,18 @@ from typing import (
     Tuple,
     Union,
 )
-from ape.utils import ManagerAccessMixin
 
 from eth_abi import encode
 from eth_account.account import SignedMessage
 from eth_utils import remove_0x_prefix
+from web3 import Web3
+from web3._utils.contracts import encode_abi  # noqa
+from web3.contract.contract import ContractFunction
+from web3.types import (
+    ChecksumAddress,
+    HexStr,
+    Wei,
+)
 
 from ._abi_builder import _ABIMap
 from ._constants import (
@@ -35,14 +42,12 @@ from ._enums import (
     _RouterFunction,
     FunctionRecipient,
 )
-from eth_utils import to_checksum_address, to_bytes, to_hex
-from eth_typing import AnyAddress, ChecksumAddress, HexStr
 
 
-class _Encoder(ManagerAccessMixin):
-    def __init__(self, abi_map: _ABIMap, router_address: Union[AnyAddress, str, bytes]) -> None:
-        self._router_contract = self.chain_manager.contracts.instance_at(
-            to_checksum_address(router_address), abi=_router_abi)
+class _Encoder:
+    def __init__(self, w3: Web3, abi_map: _ABIMap) -> None:
+        self._w3 = w3
+        self._router_contract = self._w3.eth.contract(abi=_router_abi)
         self._abi_map = abi_map
 
     @staticmethod
@@ -57,23 +62,23 @@ class _Encoder(ManagerAccessMixin):
         path = "0x"
         for i, item in enumerate(path_list):
             if i % 2 == 0:
-                _item = to_checksum_address(cast(ChecksumAddress, item))[2:]
+                _item = Web3.to_checksum_address(cast(ChecksumAddress, item))[2:]
             else:
                 _item = f"{item:06X}"
             path += _item
-        return to_bytes(hexstr=HexStr(path))
+        return Web3.to_bytes(hexstr=HexStr(path))
 
     def chain(self) -> _ChainedFunctionBuilder:
         """
         :return: Initialize the chain of encoded functions
         """
-        return _ChainedFunctionBuilder(self._abi_map, self._router_contract.address)
+        return _ChainedFunctionBuilder(self._w3, self._abi_map)
 
 
-class _ChainedFunctionBuilder(ManagerAccessMixin):
-    def __init__(self, abi_map: _ABIMap, router_address: Union[AnyAddress, str, bytes]):
-        self._router_contract = self.chain_manager.contracts.instance_at(
-            to_checksum_address(router_address), abi=_router_abi)
+class _ChainedFunctionBuilder:
+    def __init__(self, w3: Web3, abi_map: _ABIMap):
+        self._w3 = w3
+        self._router_contract = self._w3.eth.contract(abi=_router_abi)
         self._abi_map = abi_map
         self.commands: List[_RouterFunction] = []
         self.arguments: List[bytes] = []
@@ -89,7 +94,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         }
         recipient = recipient_mapping[function_recipient]
         if recipient:
-            return to_checksum_address(recipient)
+            return Web3.to_checksum_address(recipient)
         else:
             raise ValueError(
                 f"Invalid function_recipient: {function_recipient} or custom_recipient: {custom_recipient}: "
@@ -100,71 +105,80 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def _to_command(*router_functions: _RouterFunction) -> bytes:
         command = b""
         for r_fct in router_functions:
-            command += to_bytes(r_fct.value)
+            command += Web3.to_bytes(r_fct.value)
         return command
 
     @staticmethod
     def _encode_execution_function(arguments: Tuple[bytes, List[bytes], int]) -> HexStr:
         encoded_data = encode(_execution_function_input_types, arguments)
-        return to_hex(to_bytes(hexstr=_execution_function_selector) + encoded_data)
+        return Web3.to_hex(Web3.to_bytes(hexstr=_execution_function_selector) + encoded_data)
 
-    def _encode_wrap_eth_sub_contract(self, recipient: ChecksumAddress, amount_min: int) -> HexStr:
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.WRAP_ETH, [recipient, amount_min]))
+    def _encode_wrap_eth_sub_contract(self, recipient: ChecksumAddress, amount_min: Wei) -> HexStr:
+        abi_mapping = self._abi_map[_RouterFunction.WRAP_ETH]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.WRAP_ETH(recipient, amount_min)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, [recipient, amount_min]))
 
     def wrap_eth(
             self,
             function_recipient: FunctionRecipient,
-            amount: int,
+            amount: Wei,
             custom_recipient: Optional[ChecksumAddress] = None) -> _ChainedFunctionBuilder:
         """
         Encode the call to the function WRAP_ETH which convert ETH to WETH through the UR
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount: The amount of sent ETH in int.
+        :param amount: The amount of sent ETH in WEI.
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
         :return: The chain link corresponding to this function call.
         """
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.WRAP_ETH)
-        self.arguments.append(to_bytes(hexstr=self._encode_wrap_eth_sub_contract(recipient, amount)))
+        self.arguments.append(Web3.to_bytes(hexstr=self._encode_wrap_eth_sub_contract(recipient, amount)))
         return self
 
-    def _encode_unwrap_weth_sub_contract(self, recipient: ChecksumAddress, amount_min: int) -> HexStr:
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.UNWRAP_ETH, [recipient, amount_min]))
+    def _encode_unwrap_weth_sub_contract(self, recipient: ChecksumAddress, amount_min: Wei) -> HexStr:
+        abi_mapping = self._abi_map[_RouterFunction.UNWRAP_WETH]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.UNWRAP_WETH(recipient, amount_min)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, [recipient, amount_min]))
 
     def unwrap_weth(
             self,
             function_recipient: FunctionRecipient,
-            amount: int,
+            amount: Wei,
             custom_recipient: Optional[ChecksumAddress] = None) -> _ChainedFunctionBuilder:
         """
         Encode the call to the function UNWRAP_WETH which convert WETH to ETH through the UR
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount: The amount of sent WETH in int.
+        :param amount: The amount of sent WETH in WEI.
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
         :return: The chain link corresponding to this function call.
         """
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.UNWRAP_WETH)
-        self.arguments.append(to_bytes(hexstr=self._encode_unwrap_weth_sub_contract(recipient, amount)))
+        self.arguments.append(Web3.to_bytes(hexstr=self._encode_unwrap_weth_sub_contract(recipient, amount)))
         return self
 
     def _encode_v2_swap_exact_in_sub_contract(
             self,
             recipient: ChecksumAddress,
-            amount_in: int,
-            amount_out_min: int,
+            amount_in: Wei,
+            amount_out_min: Wei,
             path: Sequence[ChecksumAddress],
             payer_is_user: bool) -> HexStr:
         args = (recipient, amount_in, amount_out_min, path, payer_is_user)
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.V2_SWAP_EXACT_IN, args))
+        abi_mapping = self._abi_map[_RouterFunction.V2_SWAP_EXACT_IN]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.V2_SWAP_EXACT_IN(*args)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def v2_swap_exact_in(
             self,
             function_recipient: FunctionRecipient,
-            amount_in: int,
-            amount_out_min: int,
+            amount_in: Wei,
+            amount_out_min: Wei,
             path: Sequence[ChecksumAddress],
             custom_recipient: Optional[ChecksumAddress] = None,
             payer_is_sender: bool = True) -> _ChainedFunctionBuilder:
@@ -173,7 +187,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         Correct allowances must have been set before sending such transaction.
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount_in: The exact amount of the sold (token_in) token in int
+        :param amount_in: The exact amount of the sold (token_in) token in Wei
         :param amount_out_min: The minimum accepted bought token (token_out)
         :param path: The V2 path: a list of 2 or 3 tokens where the first is token_in and the last is token_out
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
@@ -183,7 +197,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.V2_SWAP_EXACT_IN)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_v2_swap_exact_in_sub_contract(
                     recipient,
                     amount_in,
@@ -198,7 +212,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def v2_swap_exact_in_from_balance(
             self,
             function_recipient: FunctionRecipient,
-            amount_out_min: int,
+            amount_out_min: Wei,
             path: Sequence[ChecksumAddress],
             custom_recipient: Optional[ChecksumAddress] = None) -> _ChainedFunctionBuilder:
         """
@@ -225,18 +239,21 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def _encode_v2_swap_exact_out_sub_contract(
             self,
             recipient: ChecksumAddress,
-            amount_out: int,
-            amount_in_max: int,
+            amount_out: Wei,
+            amount_in_max: Wei,
             path: Sequence[ChecksumAddress],
             payer_is_user: bool) -> HexStr:
         args = (recipient, amount_out, amount_in_max, path, payer_is_user)
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.V2_SWAP_EXACT_OUT, args))
+        abi_mapping = self._abi_map[_RouterFunction.V2_SWAP_EXACT_OUT]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.V2_SWAP_EXACT_OUT(*args)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def v2_swap_exact_out(
             self,
             function_recipient: FunctionRecipient,
-            amount_out: int,
-            amount_in_max: int,
+            amount_out: Wei,
+            amount_in_max: Wei,
             path: Sequence[ChecksumAddress],
             custom_recipient: Optional[ChecksumAddress] = None,
             payer_is_sender: bool = True) -> _ChainedFunctionBuilder:
@@ -245,7 +262,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         Correct allowances must have been set before sending such transaction.
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount_out: The exact amount of the bought (token_out) token in int
+        :param amount_out: The exact amount of the bought (token_out) token in Wei
         :param amount_in_max: The maximum accepted sold token (token_in)
         :param path: The V2 path: a list of 2 or 3 tokens where the first is token_in and the last is token_out
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
@@ -255,7 +272,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.V2_SWAP_EXACT_OUT)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_v2_swap_exact_out_sub_contract(
                     recipient,
                     amount_out,
@@ -270,19 +287,22 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def _encode_v3_swap_exact_in_sub_contract(
             self,
             recipient: ChecksumAddress,
-            amount_in: int,
-            amount_out_min: int,
+            amount_in: Wei,
+            amount_out_min: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             payer_is_user: bool) -> HexStr:
         encoded_v3_path = _Encoder.v3_path(_RouterFunction.V3_SWAP_EXACT_IN.name, path)
         args = (recipient, amount_in, amount_out_min, encoded_v3_path, payer_is_user)
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.V3_SWAP_EXACT_IN, args))
+        abi_mapping = self._abi_map[_RouterFunction.V3_SWAP_EXACT_IN]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.V3_SWAP_EXACT_IN(*args)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def v3_swap_exact_in(
             self,
             function_recipient: FunctionRecipient,
-            amount_in: int,
-            amount_out_min: int,
+            amount_in: Wei,
+            amount_out_min: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             custom_recipient: Optional[ChecksumAddress] = None,
             payer_is_sender: bool = True) -> _ChainedFunctionBuilder:
@@ -291,8 +311,8 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         Correct allowances must have been set before sending such transaction.
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount_in: The exact amount of the sold (token_in) token in int
-        :param amount_out_min: The minimum accepted bought token (token_out) in int
+        :param amount_in: The exact amount of the sold (token_in) token in Wei
+        :param amount_out_min: The minimum accepted bought token (token_out) in Wei
         :param path: The V3 path: a list of tokens where the first is the token_in, the last one is the token_out, and
         with the pool fee between each token in basis points (ex: 3000 for 0.3%)
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
@@ -302,7 +322,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.V3_SWAP_EXACT_IN)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_v3_swap_exact_in_sub_contract(
                     recipient,
                     amount_in,
@@ -317,7 +337,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def v3_swap_exact_in_from_balance(
             self,
             function_recipient: FunctionRecipient,
-            amount_out_min: int,
+            amount_out_min: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             custom_recipient: Optional[ChecksumAddress] = None) -> _ChainedFunctionBuilder:
         """
@@ -327,7 +347,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         Correct allowances must have been set before sending such transaction.
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount_out_min: The minimum accepted bought token (token_out) in int
+        :param amount_out_min: The minimum accepted bought token (token_out) in Wei
         :param path: The V3 path: a list of tokens where the first is the token_in, the last one is the token_out, and
         with the pool fee between each token in basis points (ex: 3000 for 0.3%)
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
@@ -345,19 +365,22 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
     def _encode_v3_swap_exact_out_sub_contract(
             self,
             recipient: ChecksumAddress,
-            amount_out: int,
-            amount_in_max: int,
+            amount_out: Wei,
+            amount_in_max: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             payer_is_user: bool) -> HexStr:
         encoded_v3_path = _Encoder.v3_path(_RouterFunction.V3_SWAP_EXACT_OUT.name, path)
         args = (recipient, amount_out, amount_in_max, encoded_v3_path, payer_is_user)
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.V3_SWAP_EXACT_OUT, args))
+        abi_mapping = self._abi_map[_RouterFunction.V3_SWAP_EXACT_OUT]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.V3_SWAP_EXACT_OUT(*args)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def v3_swap_exact_out(
             self,
             function_recipient: FunctionRecipient,
-            amount_out: int,
-            amount_in_max: int,
+            amount_out: Wei,
+            amount_in_max: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             custom_recipient: Optional[ChecksumAddress] = None,
             payer_is_sender: bool = True) -> _ChainedFunctionBuilder:
@@ -366,8 +389,8 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         Correct allowances must have been set before sending such transaction.
 
         :param function_recipient: A FunctionRecipient which defines the recipient of this function output.
-        :param amount_out: The exact amount of the bought (token_out) token in int
-        :param amount_in_max: The maximum accepted sold token (token_in) in int
+        :param amount_out: The exact amount of the bought (token_out) token in Wei
+        :param amount_in_max: The maximum accepted sold token (token_in) in Wei
         :param path: The V3 path: a list of tokens where the first is the token_in, the last one is the token_out, and
         with the pool fee between each token in basis points (ex: 3000 for 0.3%)
         :param custom_recipient: If function_recipient is CUSTOM, must be the actual recipient, otherwise None.
@@ -377,7 +400,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.V3_SWAP_EXACT_OUT)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_v3_swap_exact_out_sub_contract(
                     recipient,
                     amount_out,
@@ -399,7 +422,10 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
             permit_single["sigDeadline"],
         )
         args = (struct, signed_permit_single.signature)
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.PERMIT2_PERMIT, args))
+        abi_mapping = self._abi_map[_RouterFunction.PERMIT2_PERMIT]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.PERMIT2_PERMIT(*args)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def permit2_permit(
             self,
@@ -415,7 +441,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         """
         self.commands.append(_RouterFunction.PERMIT2_PERMIT)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_permit2_permit_sub_contract(
                     permit_single,
                     signed_permit_single,
@@ -424,14 +450,17 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         )
         return self
 
-    def _encode_sweep_sub_contract(self, token: ChecksumAddress, recipient: ChecksumAddress, amount_min: int) -> HexStr:
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.SWEEP, [token, recipient, amount_min]))
+    def _encode_sweep_sub_contract(self, token: ChecksumAddress, recipient: ChecksumAddress, amount_min: Wei) -> HexStr:
+        abi_mapping = self._abi_map[_RouterFunction.SWEEP]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.SWEEP(token, recipient, amount_min)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, [token, recipient, amount_min]))
 
     def sweep(
             self,
             function_recipient: FunctionRecipient,
             token_address: ChecksumAddress,
-            amount_min: int,
+            amount_min: Wei,
             custom_recipient: Optional[ChecksumAddress] = None) -> _ChainedFunctionBuilder:
         """
         Encode the call to the function SWEEP which sweeps all of the router's ERC20 or ETH to an address
@@ -445,7 +474,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.SWEEP)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_sweep_sub_contract(
                     token_address,
                     recipient,
@@ -456,7 +485,10 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         return self
 
     def _encode_pay_portion_sub_contract(self, token: ChecksumAddress, recipient: ChecksumAddress, bips: int) -> HexStr:
-        return remove_0x_prefix(self._router_contract.encode_input(_RouterFunction.PAY_PORTION, [token, recipient, bips]))
+        abi_mapping = self._abi_map[_RouterFunction.PAY_PORTION]
+        sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        contract_function: ContractFunction = sub_contract.functions.PAY_PORTION(token, recipient, bips)
+        return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, [token, recipient, bips]))
 
     def pay_portion(
             self,
@@ -484,7 +516,7 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.PAY_PORTION)
         self.arguments.append(
-            to_bytes(
+            Web3.to_bytes(
                 hexstr=self._encode_pay_portion_sub_contract(
                     token_address,
                     recipient,
@@ -509,3 +541,4 @@ class _ChainedFunctionBuilder(ManagerAccessMixin):
             deadline or int(datetime.now().timestamp() + 180)  # Todo: support UR execution function without deadline
         )
         return self._encode_execution_function(execute_input)
+

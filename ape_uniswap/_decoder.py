@@ -14,35 +14,34 @@ from typing import (
     Union,
 )
 
-from ethpm_types import HexBytes
+from web3 import Web3
+from web3.contract.contract import ContractFunction
+from web3.types import (
+    ChecksumAddress,
+    HexBytes,
+    HexStr,
+    TxData,
+)
 
 from ._abi_builder import _ABIMap
 from ._constants import _router_abi
 from ._enums import _RouterFunction
 
-from ape.utils import ManagerAccessMixin
-from eth_utils import to_checksum_address
-from eth_typing import AnyAddress, ChecksumAddress, HexStr
-from ape.api import (
-    ReceiptAPI
-)
 
-
-class _Decoder(ManagerAccessMixin):
-    def __init__(self, abi_map: _ABIMap, router_address: Union[AnyAddress, str, bytes]) -> None:
-        # self._router_contract = self._w3.eth.contract(abi=_router_abi)
-        self._router_contract = self.chain_manager.contracts.instance_at(
-            to_checksum_address(router_address), abi=_router_abi)
+class _Decoder:
+    def __init__(self, w3: Web3, abi_map: _ABIMap) -> None:
+        self._w3 = w3
+        self._router_contract = self._w3.eth.contract(abi=_router_abi)
         self._abi_map = abi_map
 
-    def function_input(self, input_data: Union[HexStr, HexBytes]) -> Tuple[str, Dict[str, Any]]:
+    def function_input(self, input_data: Union[HexStr, HexBytes]) -> Tuple[ContractFunction, Dict[str, Any]]:
         """
         Decode the data sent to an UR function
 
         :param input_data: the transaction 'input' data
         :return: The decoded data if the function has been implemented.
         """
-        fct_name, decoded_input = self._router_contract.decode_input(input_data)
+        fct_name, decoded_input = self._router_contract.decode_function_input(input_data)
         command = decoded_input["commands"]
         command_input = decoded_input["inputs"]
         decoded_command_input = []
@@ -51,8 +50,8 @@ class _Decoder(ManagerAccessMixin):
             try:
                 abi_mapping = self._abi_map[_RouterFunction(b)]
                 data = abi_mapping.selector + command_input[i]
-                # sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
-                decoded_command_input.append(self._router_contract.decode_input(data))
+                sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+                decoded_command_input.append(sub_contract.decode_function_input(data))
             except (ValueError, KeyError):
                 decoded_command_input.append(command_input[i].hex())
         decoded_input["inputs"] = decoded_command_input
@@ -68,13 +67,13 @@ class _Decoder(ManagerAccessMixin):
         :return: the transaction as a dict with the additional 'decoded_input' field
         """
         trx = self._get_transaction(trx_hash)
-        fct_name, decoded_input = self.function_input(trx.transaction.data)
-        result_trx = dict(trx.transaction)
+        fct_name, decoded_input = self.function_input(trx["input"])
+        result_trx = dict(trx)
         result_trx["decoded_input"] = decoded_input
         return result_trx
 
-    def _get_transaction(self, trx_hash: Union[HexBytes, HexStr]) -> ReceiptAPI:
-        return self.chain_manager.get_receipt(trx_hash)
+    def _get_transaction(self, trx_hash: Union[HexBytes, HexStr]) -> TxData:
+        return self._w3.eth.get_transaction(trx_hash)
 
     @staticmethod
     def v3_path(v3_fn_name: str, path: Union[bytes, str]) -> Tuple[Union[int, ChecksumAddress], ...]:
@@ -91,11 +90,11 @@ class _Decoder(ManagerAccessMixin):
             raise ValueError(f"v3_fn_name must be in {valid_fn_names}")
         path_str = path.hex() if isinstance(path, bytes) else str(path)
         path_str = path_str[2:] if path_str.startswith("0x") else path_str
-        path_list: List[Union[int, ChecksumAddress]] = [to_checksum_address(path_str[0:40]), ]
+        path_list: List[Union[int, ChecksumAddress]] = [Web3.to_checksum_address(path_str[0:40]), ]
         parsed_remaining_path: List[List[Union[int, ChecksumAddress]]] = [
             [
                 int(path_str[40:][i:i + 6], 16),
-                to_checksum_address(path_str[40:][i + 6:i + 46]),
+                Web3.to_checksum_address(path_str[40:][i + 6:i + 46]),
             ]
             for i in range(0, len(path_str[40:]), 46)
         ]

@@ -168,3 +168,4 @@ class _ABIBuilder:
     def _build_pay_portion() -> _FunctionABI:
         builder = _FunctionABIBuilder("PAY_PORTION")
         return builder.add_address("token").add_address("recipient").add_int("bips").build()
+

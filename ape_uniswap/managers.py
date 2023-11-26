@@ -9,6 +9,7 @@ from ._constants import (
     _router_abi,
 )
 from ape.api import AccountAPI, ReceiptAPI
+from eth_utils import to_checksum_address
 
 from typing import (
     Optional,
@@ -44,10 +45,10 @@ class UniswapManager(ManagerAccessMixin):
         print(f"Builder initiated")
         builder = builder.v3_swap_exact_in(
             self,
-            FunctionRecipient.SENDER,
-            amount_in,
-            amount_out_min,
-            [token_in, fee, token_out])
+            function_recipient=FunctionRecipient.SENDER,
+            amount_in=amount_in,
+            amount_out_min=amount_out_min,
+            path=[to_checksum_address(token_in), fee, to_checksum_address(token_out)])
             
         print(f"Swap added to chain")
 

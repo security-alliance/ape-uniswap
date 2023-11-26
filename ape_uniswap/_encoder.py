@@ -87,15 +87,23 @@ class _ChainedFunctionBuilder:
     def _get_recipient(
             function_recipient: FunctionRecipient,
             custom_recipient: Optional[ChecksumAddress] = None) -> ChecksumAddress:
+            
+        print(f"Getting recipient")
+        print(f"Function recipient: {function_recipient}")
+        print(f"Custom recipient: {custom_recipient}")
         recipient_mapping = {
             FunctionRecipient.SENDER: _RouterConstant.MSG_SENDER.value,
             FunctionRecipient.ROUTER: _RouterConstant.ADDRESS_THIS.value,
             FunctionRecipient.CUSTOM: custom_recipient,
         }
+        print(f"Recipient mapping: {recipient_mapping}")
         recipient = recipient_mapping[function_recipient]
+        print(f"Recipient: {recipient}")
         if recipient:
+            print(f"Recipient is not None")
             return Web3.to_checksum_address(recipient)
         else:
+            print(f"Recipient is None")
             raise ValueError(
                 f"Invalid function_recipient: {function_recipient} or custom_recipient: {custom_recipient}: "
                 f"custom_recipient address must be provided if FunctionRecipient.CUSTOM is selected."

@@ -291,11 +291,17 @@ class _ChainedFunctionBuilder:
             amount_out_min: Wei,
             path: Sequence[Union[int, ChecksumAddress]],
             payer_is_user: bool) -> HexStr:
+        print(f"Encoding swap")
         encoded_v3_path = _Encoder.v3_path(_RouterFunction.V3_SWAP_EXACT_IN.name, path)
+        print(f"Encoded path: {encoded_v3_path}")
         args = (recipient, amount_in, amount_out_min, encoded_v3_path, payer_is_user)
+        print(f"Args: {args}")
         abi_mapping = self._abi_map[_RouterFunction.V3_SWAP_EXACT_IN]
+        print(f"ABI mapping: {abi_mapping}")
         sub_contract = self._w3.eth.contract(abi=abi_mapping.fct_abi.get_full_abi())
+        print(f"Sub contract: {sub_contract}")
         contract_function: ContractFunction = sub_contract.functions.V3_SWAP_EXACT_IN(*args)
+        print(f"Contract function: {contract_function}")
         return remove_0x_prefix(encode_abi(self._w3, contract_function.abi, args))
 
     def v3_swap_exact_in(
@@ -321,7 +327,9 @@ class _ChainedFunctionBuilder:
         """
         print(f"Building swap")
         recipient = self._get_recipient(function_recipient, custom_recipient)
+        print(f"Recipient: {recipient}")
         self.commands.append(_RouterFunction.V3_SWAP_EXACT_IN)
+        print(f"Commands: {self.commands}")
         self.arguments.append(
             Web3.to_bytes(
                 hexstr=self._encode_v3_swap_exact_in_sub_contract(
@@ -333,6 +341,7 @@ class _ChainedFunctionBuilder:
                 )
             )
         )
+        print(f"Arguments: {self.arguments}")
         return self
 
     def v3_swap_exact_in_from_balance(

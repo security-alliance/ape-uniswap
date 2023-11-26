@@ -319,6 +319,7 @@ class _ChainedFunctionBuilder:
         :param payer_is_sender: True if the in tokens come from the sender, False if they already are in the router
         :return: The chain link corresponding to this function call.
         """
+        print(f"Building swap")
         recipient = self._get_recipient(function_recipient, custom_recipient)
         self.commands.append(_RouterFunction.V3_SWAP_EXACT_IN)
         self.arguments.append(

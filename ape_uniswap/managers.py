@@ -34,8 +34,11 @@ class UniswapManager(ManagerAccessMixin):
             fee: int,
             sender: Optional[AccountAPI] = None,
     ) -> ReceiptAPI:
+        print(f"Executing swap exact in: {amount_in} {token_in} for {token_out}")
         if (self.network_manager.network.chain_id != 1):
             raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+            
+        print(f"Chain ID is 1")
 
         builder = self.router_codec.encode.chain()
         builder = builder.v3_swap_exact_in(
@@ -46,6 +49,8 @@ class UniswapManager(ManagerAccessMixin):
             [token_in, fee, token_out])
 
         encoded_data = builder.build()
+        print(f"Encoded data: {encoded_data}")
         router_contract = Contract(UNI_V3_ROUTER, abi=_router_abi)
+        print(f"Calling router contract: {router_contract.address}")
 
         return router_contract.__call__(data=encoded_data, sender=sender)

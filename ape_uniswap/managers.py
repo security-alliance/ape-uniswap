@@ -43,7 +43,7 @@ class UniswapManager(ManagerAccessMixin):
             FunctionRecipient.SENDER,
             amount_in,
             amount_out_min,
-            Sequence[token_in, fee, token_out])
+            [token_in, fee, token_out])
 
         encoded_data = builder.build()
         router_contract = Contract(UNI_V3_ROUTER, abi=_router_abi)

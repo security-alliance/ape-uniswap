@@ -39,20 +39,53 @@ class UniswapManager(ManagerAccessMixin):
         if (self.network_manager.network.chain_id != 1):
             raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
             
-        print(f"Chain ID is 1")
+        # print(f"Chain ID is 1")
 
         builder = self.router_codec.encode.chain()
-        print(f"Builder initiated")
+        # print(f"Builder initiated")
         builder = builder.v3_swap_exact_in(
             function_recipient=FunctionRecipient.SENDER,
             amount_in=amount_in,
             amount_out_min=amount_out_min,
             path=[to_checksum_address(token_in), fee, to_checksum_address(token_out)])
             
-        print(f"Swap added to chain")
+        # print(f"Swap added to chain")
 
         encoded_data = builder.build(deadline=deadline)
-        print(f"Encoded data: {encoded_data}")
+        # print(f"Encoded data: {encoded_data}")
+        router_contract = Contract(UNI_UR, abi=_router_abi)
+        print(f"Calling router contract: {router_contract.address}")
+
+        return router_contract.__call__(data=encoded_data, sender=sender)
+
+    def execute_v3_swap_exact_out_simple(
+            self,
+            amount_out: int,
+            amount_in_max: int,
+            token_out: AnyAddress,
+            token_in: AnyAddress,
+            fee: int,
+            deadline: Optional[int] = None,
+            sender: Optional[AccountAPI] = None,
+    ) -> ReceiptAPI:
+        print(f"Executing swap exact out: {amount_out} {token_out} for {token_in}")
+        if (self.network_manager.network.chain_id != 1):
+            raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+            
+        # print(f"Chain ID is 1")
+
+        builder = self.router_codec.encode.chain()
+        # print(f"Builder initiated")
+        builder = builder.v3_swap_exact_out(
+            function_recipient=FunctionRecipient.SENDER,
+            amount_out=amount_out,
+            amount_in_max=amount_in_max,
+            path=[to_checksum_address(token_in), fee, to_checksum_address(token_out)])
+            
+        # print(f"Swap added to chain")
+
+        encoded_data = builder.build(deadline=deadline)
+        # print(f"Encoded data: {encoded_data}")
         router_contract = Contract(UNI_UR, abi=_router_abi)
         print(f"Calling router contract: {router_contract.address}")
 

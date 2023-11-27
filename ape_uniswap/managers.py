@@ -32,6 +32,7 @@ class UniswapManager(ManagerAccessMixin):
             token_in: AnyAddress,
             token_out: AnyAddress,
             fee: int,
+            deadline: Optional[int] = None,
             sender: Optional[AccountAPI] = None,
     ) -> ReceiptAPI:
         print(f"Executing swap exact in: {amount_in} {token_in} for {token_out}")
@@ -50,7 +51,7 @@ class UniswapManager(ManagerAccessMixin):
             
         print(f"Swap added to chain")
 
-        encoded_data = builder.build()
+        encoded_data = builder.build(deadline=deadline)
         print(f"Encoded data: {encoded_data}")
         router_contract = Contract(UNI_UR, abi=_router_abi)
         print(f"Calling router contract: {router_contract.address}")

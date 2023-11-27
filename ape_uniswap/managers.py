@@ -15,8 +15,7 @@ from typing import (
     Optional,
     Sequence,
 )
-UNI_V2_ROUTER = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-UNI_V3_ROUTER = "0xE592427A0AEce92De3Edee1F18E0157C05861564"
+UNI_UR = "0x3fC91A3afd70395Cd496C647d5a6CC9D4B2b7FAD"
 
 
 class UniswapManager(ManagerAccessMixin):
@@ -53,7 +52,7 @@ class UniswapManager(ManagerAccessMixin):
 
         encoded_data = builder.build()
         print(f"Encoded data: {encoded_data}")
-        router_contract = Contract(UNI_V3_ROUTER, abi=_router_abi)
+        router_contract = Contract(UNI_UR, abi=_router_abi)
         print(f"Calling router contract: {router_contract.address}")
 
         return router_contract.__call__(data=encoded_data, sender=sender)

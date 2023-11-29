@@ -36,8 +36,10 @@ class UniswapManager(ManagerAccessMixin):
             sender: Optional[AccountAPI] = None,
     ) -> ReceiptAPI:
         print(f"Executing swap exact in: {amount_in} {token_in} for {token_out}")
-        if (self.network_manager.network.chain_id != 1):
-            raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+        # if (self.network_manager.network.chain_id != 1):
+        #     raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+        if self.network_manager.network.chain_id not in [1, 1337]:
+            raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet and chain_id 1337")
             
         # print(f"Chain ID is 1")
 
@@ -69,8 +71,10 @@ class UniswapManager(ManagerAccessMixin):
             sender: Optional[AccountAPI] = None,
     ) -> ReceiptAPI:
         print(f"Executing swap exact out: {amount_out} {token_out} for {token_in}")
-        if (self.network_manager.network.chain_id != 1):
-            raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+        # if (self.network_manager.network.chain_id != 1):
+        #     raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet for now")
+        if self.network_manager.network.chain_id not in [1, 1337]:
+            raise ValueError("Uniswap V3 is only supported on Ethereum Mainnet and chain_id 1337")
             
         # print(f"Chain ID is 1")
 
